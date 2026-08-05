@@ -1,0 +1,28 @@
+name: Bug report
+description: Report a reproducible problem in an authorized test environment
+title: "[Bug]: "
+labels: ["bug"]
+body:
+  - type: markdown
+    attributes:
+      value: Remove credentials, cookies, tokens, customer data, and private target information before submitting.
+  - type: textarea
+    id: problem
+    attributes:
+      label: Problem
+      description: What happened and what did you expect?
+    validations:
+      required: true
+  - type: textarea
+    id: config
+    attributes:
+      label: Sanitized configuration
+      description: Include MODE, duration, rate/VUs, paths, and k6 version without sensitive target details.
+      render: shell
+    validations:
+      required: true
+  - type: textarea
+    id: output
+    attributes:
+      label: Sanitized output
+      render: shell
