@@ -1,6 +1,6 @@
 [CmdletBinding()]
 param(
-    [string]$ProviderFile = (Join-Path $PSScriptRoot "proxy-providers.json"),
+    [string]$ProviderFile,
     [Parameter(Mandatory = $true)]
     [ValidateNotNullOrEmpty()]
     [string]$TestUrl,
@@ -10,10 +10,17 @@ param(
     [int]$MaxWorking = 10,
     [ValidateRange(1, 50)]
     [int]$ThrottleLimit = 10,
-    [string]$OutputFile = (Join-Path $PSScriptRoot ".proxy-cache\working-proxies.txt")
+    [string]$OutputFile
 )
 
 $ErrorActionPreference = "Stop"
+
+if (-not $ProviderFile) {
+    $ProviderFile = Join-Path $PSScriptRoot "proxy-providers.json"
+}
+if (-not $OutputFile) {
+    $OutputFile = Join-Path $PSScriptRoot ".proxy-cache\working-proxies.txt"
+}
 
 function Test-PublicIPv4 {
     param([Parameter(Mandatory = $true)][string]$Address)
@@ -80,7 +87,9 @@ function Test-ProxyWithCurl {
     )
 
     $startedAt = [DateTime]::UtcNow
-    $statusText = & $CurlPath --silent --show-error --output $NullDevice `
+    # Proxy failures and timeouts are expected. Keep curl silent and use its
+    # exit code so Windows PowerShell does not turn stderr into NativeCommandError.
+    $statusText = & $CurlPath --silent --output $NullDevice `
         --write-out "%{http_code}" --max-time $Candidate.Timeout `
         --proxy $Candidate.CurlProxy $Destination 2>$null
     $exitCode = $LASTEXITCODE
@@ -180,7 +189,7 @@ $working = if ($PSVersionTable.PSVersion.Major -ge 7) {
     @($sample | ForEach-Object -ThrottleLimit $ThrottleLimit -Parallel {
         $candidate = $_
         $startedAt = [DateTime]::UtcNow
-        $statusText = & $using:curlPath --silent --show-error --output $using:nullDevice `
+        $statusText = & $using:curlPath --silent --output $using:nullDevice `
             --write-out "%{http_code}" --max-time $candidate.Timeout `
             --proxy $candidate.CurlProxy $using:testUri.AbsoluteUri 2>$null
         $exitCode = $LASTEXITCODE
