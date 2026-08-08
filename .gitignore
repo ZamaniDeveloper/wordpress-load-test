@@ -4,3 +4,5 @@
 *.log
 results/
 .proxy-cache/
+__pycache__/
+*.py[cod]
