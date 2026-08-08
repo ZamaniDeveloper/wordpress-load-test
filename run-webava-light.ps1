@@ -41,4 +41,53 @@ $env:RAMP_DOWN = if ($env:RAMP_DOWN) { $env:RAMP_DOWN } else { "1m" }
 $env:SLEEP = if ($env:SLEEP) { $env:SLEEP } else { "1" }
 $env:PATHS = if ($env:PATHS) { $env:PATHS } else { "/,/blog/,/?s=wordpress,/wp-json/" }
 
+$useProxy = $env:USE_PROXY -and $env:USE_PROXY.Trim().ToLowerInvariant() -in @("1", "true", "yes", "on")
+
+if ($useProxy) {
+    $proxyCacheFile = Join-Path $PSScriptRoot ".proxy-cache\working-proxies.txt"
+    $cacheMinutes = if ($env:PROXY_CACHE_MINUTES) { [int]$env:PROXY_CACHE_MINUTES } else { 60 }
+    $cacheIsFresh = (Test-Path $proxyCacheFile) -and
+        (Get-Item $proxyCacheFile).Length -gt 0 -and
+        ((Get-Date) - (Get-Item $proxyCacheFile).LastWriteTime).TotalMinutes -lt $cacheMinutes
+
+    if (-not $cacheIsFresh) {
+        $proxySources = if ($env:PROXY_SOURCE_URLS) {
+            @($env:PROXY_SOURCE_URLS.Split(";", [System.StringSplitOptions]::RemoveEmptyEntries))
+        }
+        else {
+            @(
+                "https://raw.githubusercontent.com/proxifly/free-proxy-list/main/proxies/protocols/http/data.txt",
+                "https://raw.githubusercontent.com/proxifly/free-proxy-list/main/proxies/protocols/https/data.txt",
+                "https://raw.githubusercontent.com/TheSpeedX/PROXY-List/master/http.txt"
+            )
+        }
+
+        $proxyParams = @{
+            SourceUrls = $proxySources
+            TestUrl = if ($env:PROXY_TEST_URL) { $env:PROXY_TEST_URL } else { $env:TARGET_URL }
+            MaxCandidates = if ($env:MAX_PROXY_CANDIDATES) { [int]$env:MAX_PROXY_CANDIDATES } else { 30 }
+            MaxWorking = if ($env:MAX_WORKING_PROXIES) { [int]$env:MAX_WORKING_PROXIES } else { 5 }
+            TimeoutSeconds = if ($env:PROXY_TIMEOUT_SECONDS) { [int]$env:PROXY_TIMEOUT_SECONDS } else { 5 }
+            ThrottleLimit = if ($env:PROXY_TEST_CONCURRENCY) { [int]$env:PROXY_TEST_CONCURRENCY } else { 10 }
+            OutputFile = $proxyCacheFile
+        }
+
+        & "$PSScriptRoot\Update-ProxyPool.ps1" @proxyParams | Out-Null
+    }
+
+    $workingProxies = @(Get-Content -LiteralPath $proxyCacheFile | Where-Object { $_.Trim() })
+    if ($workingProxies.Count -eq 0) {
+        throw "Proxy mode is enabled, but the working proxy cache is empty."
+    }
+
+    $selectedProxy = $workingProxies | Get-Random
+    $env:HTTP_PROXY = $selectedProxy
+    $env:HTTPS_PROXY = $selectedProxy
+    $env:http_proxy = $selectedProxy
+    $env:https_proxy = $selectedProxy
+    $env:NO_PROXY = ""
+    $env:no_proxy = ""
+    Write-Host "Using proxy for this k6 run: $selectedProxy"
+}
+
 & $k6Exe run "$PSScriptRoot\wordpress-pressure.js"
